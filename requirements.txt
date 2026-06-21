@@ -1,0 +1,9 @@
+# ZetaJarvis - Personal AI Assistant by Sachin Saroj
+faster-whisper>=1.0.0   # Local Speech Recognition (Whisper)
+sounddevice>=0.4.6      # Microphone Audio Recording
+numpy>=1.26             # Audio Processing
+pillow>=10.0            # Desktop Pet HUD Drawing
+mcp>=1.0                # Model Context Protocol (MCP) support (optional)
+pyttsx3>=2.90           # Offline Text-to-Speech (TTS) for Windows/macOS
+python-dotenv>=1.0.0    # Environment variables loading from .env
+# The LLM is called via standard library urllib through an OpenAI-compatible gateway (no extra SDK required).

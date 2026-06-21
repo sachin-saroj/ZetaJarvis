@@ -1,0 +1,6 @@
+# Copy this file as notes.txt. The content will be displayed in the HUD panel's "NOTES" section.
+#   cp notes.txt.example notes.txt
+# One item per line. Lines starting with # are not displayed. The panel refreshes every 5 seconds.
+Say "Jarvis, remember..." to store facts in long-term memory
+Say "Jarvis" or click the central reactor to wake the assistant
+Try: Open app • Get weather • Organize folder • Read screen

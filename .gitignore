@@ -1,0 +1,46 @@
+# ===== Sensitive Information / Local Configurations (DO NOT COMMIT) =====
+# Environment variables file
+.env
+# LLM API Key
+api_key.txt
+# Your LLM base URL
+base_url.txt
+# Your selected model name
+model.txt
+# iFlytek Cloud ASR credentials (3 lines: APPID/APIKey/APISecret)
+xfyun.txt
+# WhatsApp API credentials
+whatsapp_token.txt
+whatsapp_phone_id.txt
+# Personal notes (HUD panel contents)
+notes.txt
+# Memory file (facts Jarvis remembers about you)
+memory.json
+.jarvis_key
+
+# ===== Personal Voice Clone / Large Audio Files / Promo Videos =====
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.mp4
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.venv-tts/
+*.egg-info/
+
+# ===== Node / Caches =====
+.npm-cache/
+
+# ===== Editor / System / Local Proxy =====
+.DS_Store
+.claude/
+.idea/
+.vscode/
+
+# ===== Internal Backups =====
+pet_orb_backup.py

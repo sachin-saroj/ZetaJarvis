@@ -1,0 +1,17 @@
+{
+  "filesystem": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "~/Desktop", "~/Downloads"],
+    "enabled": false
+  },
+  "_example_browser_automation": {
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"],
+    "enabled": false
+  },
+  "_example_web_scraping_python": {
+    "command": "uvx",
+    "args": ["mcp-server-fetch"],
+    "enabled": false
+  }
+}

@@ -1,0 +1,3 @@
+# Copy this file as whatsapp_phone_id.txt and paste your Meta WhatsApp Phone Number ID (single line).
+# The environment variable WHATSAPP_PHONE_ID has higher priority. Never commit your real ID to git!
+PASTE_YOUR_WHATSAPP_PHONE_ID_HERE

@@ -1,0 +1,7 @@
+# Copy this file as base_url.txt and enter your API gateway/endpoint URL.
+#   cp base_url.txt.example base_url.txt
+# The gateway should be OpenAI-compatible, usually pointing up to /v1,
+# and Jarvis will automatically append /chat/completions. Or connect directly:
+#   https://api.deepseek.com/v1
+# The environment variable JARVIS_BASE_URL has higher priority.
+https://your-api-gateway-url/v1

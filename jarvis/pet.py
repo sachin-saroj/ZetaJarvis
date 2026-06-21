@@ -1,0 +1,749 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# ------------------------------------------------------------------------------
+# File: jarvis/pet.py
+# Project: ZetaJarvis - Personal AI Assistant
+# Author: Sachin Saroj (https://github.com/sachin-saroj)
+# Description: Desktop ZetaJarvis - Holographic HUD Console Panel GUI.
+# Copyright (c) 2026 Sachin Saroj. All rights reserved.
+# ------------------------------------------------------------------------------
+
+"""Desktop ZetaJarvis — Iron Man ZetaJarvis-style Holographic Console Panel (Cine-Teal Edition).
+
+Inspired by the Rainmeter "ZetaJarvis Display System" skin, featuring a wide two-column layout:
+  Left Column: Clock/Date, Central Arc Reactor, State, Audio Waveform
+  Right Column: Weather, System Telemetry (Disk/Battery/CPU/Uptime), Notes/Todos, Transcription Ledger
+Dark-teal cinematic color scheme + CRT scanlines/grid background + slowly sweeping highlight line.
+
+Features:
+  - Borderless, always-on-top, draggable (drag anywhere on the panel)
+  - Central Arc Reactor changes color and animation according to voice state:
+      idle (teal) / listening (greenish-teal) / thinking (amber+rotating) / speaking (bright-teal pulsing)
+  - Audio waveform fluctuates with status (active during speaking/listening, calm during idle)
+  - Notes section reads notes.txt in the project root (one per line, auto-refreshed); falls back to memory.json if absent
+  - Real-time system telemetry; bottom transcription ledger scrolls to show conversation history ("You say / ZetaJarvis answers")
+  - Click the reactor once to start speaking (no wake word needed); double-click or press Esc to exit
+
+GUI runs on the main thread, while the voice assistant runs on a background thread. Communication is thread-safe.
+Public interface is identical to previous version: set_state / log / heard / reply / poll_talk / run.
+"""
+
+from __future__ import annotations
+
+import glob
+import json
+import math
+import os
+import queue
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+from pathlib import Path
+
+from . import config
+
+if config.IS_WINDOWS:
+    from . import winops
+
+
+def _fix_tcltk_env() -> None:
+    """Standalone Python packages contain tkinter but often fail to locate Tcl/Tk data files,
+    so before importing tkinter, point TCL_LIBRARY/TK_LIBRARY to base_prefix/lib."""
+    specs = [("TCL_LIBRARY", "tcl*", "init.tcl"),
+             ("TK_LIBRARY", "tk*", "tk.tcl")]
+    for var, pattern, marker in specs:
+        if os.environ.get(var):
+            continue
+        for prefix in (sys.base_prefix, sys.prefix):
+            for d in sorted(glob.glob(os.path.join(prefix, "lib", pattern)),
+                            reverse=True):
+                if os.path.exists(os.path.join(d, marker)):
+                    os.environ[var] = d
+                    break
+            if os.environ.get(var):
+                break
+
+
+_fix_tcltk_env()
+
+import tkinter as tk  # noqa: E402
+
+from PIL import Image, ImageDraw, ImageFont, ImageTk  # noqa: E402
+
+# ---- Panel Size (Logical Pixels) + Supersampling Factor -------------------------------
+W, H = 720, 600
+S = 2                           # Render at 2x internally for smoother anti-aliasing
+ROOT = Path(__file__).resolve().parent.parent
+
+# Left/Right Column Layout
+DIV_X = 314                     # Vertical separator line
+LX = 26                         # Left column left bound
+RX = 336                        # Right column left bound
+RXE = W - 24                    # Right column right bound
+CXL, CYL = 168, 256             # Arc Reactor center (left column)
+REACTOR_R = 76
+
+# Dark-teal Cinematic Palette
+TEAL = (40, 188, 205)           # Primary color
+TEAL_HI = (130, 240, 248)       # Highlight color
+TEAL_DIM = (24, 92, 104)        # Dim color
+GRID = (32, 120, 130)           # Grid line color
+INK = (4, 9, 11)                # Panel background color
+
+STATE_COLOR = {
+    "idle": (40, 190, 208),
+    "listening": (52, 220, 158),
+    "thinking": (236, 182, 92),
+    "speaking": (118, 236, 248),
+}
+STATE_LABEL = {
+    "idle": "STANDBY", "listening": "LISTENING",
+    "thinking": "PROCESSING", "speaking": "SPEAKING",
+}
+
+_FONT_CACHE: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
+_WINDIR = os.environ.get("WINDIR", r"C:\Windows")
+_MONO_PATHS = (
+    # macOS
+    "/System/Library/Fonts/SFNSMono.ttf",
+    "/System/Library/Fonts/Menlo.ttc",
+    "/System/Library/Fonts/Supplemental/Courier New.ttf",
+    # Windows
+    os.path.join(_WINDIR, "Fonts", "consola.ttf"),
+    os.path.join(_WINDIR, "Fonts", "cour.ttf"),
+)
+_HAN_PATHS = (
+    # macOS
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    # Windows (Microsoft YaHei / SimHei)
+    os.path.join(_WINDIR, "Fonts", "msyh.ttc"),
+    os.path.join(_WINDIR, "Fonts", "msyh.ttf"),
+    os.path.join(_WINDIR, "Fonts", "simhei.ttf"),
+)
+
+
+def _font(paths: tuple[str, ...], size: int) -> ImageFont.FreeTypeFont:
+    key = (paths[0], size)
+    if key not in _FONT_CACHE:
+        for p in paths:
+            if os.path.exists(p):
+                _FONT_CACHE[key] = ImageFont.truetype(p, size)
+                break
+        else:
+            _FONT_CACHE[key] = ImageFont.load_default()
+    return _FONT_CACHE[key]
+
+
+def _mono(size: int) -> ImageFont.FreeTypeFont:
+    return _font(_MONO_PATHS, size * S)
+
+
+def _han(size: int) -> ImageFont.FreeTypeFont:
+    return _font(_HAN_PATHS, size * S)
+
+
+# ---- System Telemetry / Weather / Notes: Standard Libraries with Throttle Caches -----------------
+
+class Telemetry:
+    def __init__(self) -> None:
+        self._boot = self._read_boottime()
+        self._ncpu = os.cpu_count() or 8
+        self._cache: dict = {"batt": (None, False), "disk": (0, 0)}
+        self._next = {"batt": 0.0, "disk": 0.0}
+        self._cpu = winops.CpuSampler() if config.IS_WINDOWS else None
+        self._disk_root = ((os.environ.get("SystemDrive") or "C:") + "\\"
+                           if config.IS_WINDOWS else "/")
+
+    @staticmethod
+    def _read_boottime() -> float:
+        if config.IS_WINDOWS:
+            try:
+                return winops.boot_epoch()
+            except Exception:  # noqa: BLE001
+                return time.time()
+        try:
+            out = subprocess.check_output(
+                ["sysctl", "-n", "kern.boottime"], text=True)
+            return float(out.split("sec =")[1].split(",")[0].strip())
+        except Exception:  # noqa: BLE001
+            return time.time()
+
+    def disk(self) -> tuple[float, float]:
+        if time.time() >= self._next["disk"]:
+            du = shutil.disk_usage(self._disk_root)
+            self._cache["disk"] = (du.total / 1e9, du.free / 1e9)
+            self._next["disk"] = time.time() + 10
+        return self._cache["disk"]
+
+    def battery(self) -> tuple[int | None, bool]:
+        if time.time() >= self._next["batt"]:
+            pct, charging = None, False
+            if config.IS_WINDOWS:
+                try:
+                    pct, charging = winops.battery()
+                except Exception:  # noqa: BLE001
+                    pass
+            else:
+                try:
+                    out = subprocess.check_output(["pmset", "-g", "batt"],
+                                                  text=True)
+                    line = out.strip().splitlines()[-1]
+                    for tok in line.replace(";", " ").split():
+                        if tok.endswith("%"):
+                            pct = int(tok[:-1])
+                            break
+                    charging = ("charging" in line) or ("charged" in line)
+                except Exception:  # noqa: BLE001
+                    pass
+            self._cache["batt"] = (pct, charging)
+            self._next["batt"] = time.time() + 5
+        return self._cache["batt"]
+
+    def uptime(self) -> str:
+        secs = max(0, int(time.time() - self._boot))
+        d, rem = divmod(secs, 86400)
+        h, rem = divmod(rem, 3600)
+        m = rem // 60
+        return f"{d}D {h:02d}H {m:02d}M" if d else f"{h:02d}H {m:02d}M"
+
+    def load(self) -> tuple[float, float]:
+        if self._cpu is not None:                  # Windows: approximate using CPU utilization
+            frac = self._cpu.percent()
+            return frac * self._ncpu, frac
+        try:
+            la = os.getloadavg()[0]
+        except (OSError, AttributeError):
+            la = 0.0
+        return la, min(1.0, la / self._ncpu)
+
+
+class Weather:
+    def __init__(self) -> None:
+        self.text: str | None = None
+        self.temp: str | None = None
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self) -> None:
+        while True:
+            try:
+                req = urllib.request.Request(
+                    "https://wttr.in/?format=%t|%C",
+                    headers={"User-Agent": "curl/8"})
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    raw = r.read().decode("utf-8").strip()
+                if "|" in raw and "Unknown" not in raw:
+                    t, c = raw.split("|", 1)
+                    self.temp = t.replace("+", "").strip()
+                    self.text = c.strip().upper()
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(1200)
+
+
+class Notes:
+    """Notes/todo source: prioritizes notes.txt (one per line), otherwise reads facts in memory.json.
+    Re-read every 5 seconds; panel updates automatically after editing the file."""
+
+    def __init__(self) -> None:
+        self._items: list[str] = []
+        self._next = 0.0
+
+    def items(self) -> list[str]:
+        if time.time() >= self._next:
+            self._items = self._read()
+            self._next = time.time() + 5
+        return self._items
+
+    @staticmethod
+    def _read() -> list[str]:
+        nf = ROOT / "notes.txt"
+        if nf.exists():
+            out = []
+            for ln in nf.read_text(encoding="utf-8").splitlines():
+                ln = ln.strip()
+                if ln and not ln.startswith("#"):
+                    out.append(ln.lstrip("-•* ").strip())
+            if out:
+                return out
+        mj = ROOT / "memory.json"
+        if mj.exists():
+            try:
+                data = json.loads(mj.read_text(encoding="utf-8"))
+                return [it.get("fact", "") for it in data if it.get("fact")]
+            except (json.JSONDecodeError, OSError):
+                pass
+        return ["(No notes • edit notes.txt or tell me to \"remember...\")"]
+
+
+class DesktopPet:
+    def __init__(self) -> None:
+        self._q: queue.Queue[tuple] = queue.Queue()
+        self._state = "idle"
+        self._phase = 0.0
+        self._lines: list[tuple[str, str]] = []
+        self._tele = Telemetry()
+        self._weather = Weather()
+        self._notes = Notes()
+        self._bg: Image.Image | None = None
+        self.talk_event = threading.Event()
+        self.text_input_queue: queue.Queue[str] = queue.Queue()  # Text input from UI
+
+        self.root = tk.Tk()
+        self.root.overrideredirect(True)
+        self.root.wm_attributes("-topmost", True)
+        if config.IS_WINDOWS:
+            # Windows: set pure black to transparent color; black areas become transparent (the panel background is near-black, which remains visible)
+            self.root.config(bg="black")
+            try:
+                self.root.wm_attributes("-transparentcolor", "black")
+            except tk.TclError:
+                pass
+        else:
+            for attr in ("-transparent",):
+                try:
+                    self.root.wm_attributes(attr, True)
+                except tk.TclError:
+                    pass
+            try:
+                self.root.config(bg="systemTransparent")
+            except tk.TclError:
+                self.root.config(bg="black")
+
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        self._x, self._y = sw - W - 32, max(36, (sh - H) // 2)
+        self.root.geometry(f"{W}x{H}+{self._x}+{self._y}")
+
+        try:
+            self.canvas = tk.Canvas(self.root, width=W, height=H,
+                                    bg="systemTransparent",
+                                    highlightthickness=0, bd=0)
+        except tk.TclError:
+            self.canvas = tk.Canvas(self.root, width=W, height=H,
+                                    bg="black", highlightthickness=0, bd=0)
+        self.canvas.pack()
+        self._img_id = self.canvas.create_image(0, 0, anchor="nw")
+        self._photo = None
+
+        # Text input at bottom
+        self._setup_text_input()
+
+        self.canvas.bind("<ButtonPress-1>", self._press)
+        self.canvas.bind("<B1-Motion>", self._drag)
+        self.canvas.bind("<ButtonRelease-1>", self._release)
+        self.canvas.bind("<Double-Button-1>", lambda e: self.root.destroy())
+        self.root.bind("<Escape>", lambda e: self.root.destroy())
+
+        self.root.after(50, self._tick)
+
+    def _setup_text_input(self) -> None:
+        """Setup text input box at the bottom of UI"""
+        # Input frame (transparent)
+        self.input_frame = tk.Frame(self.root, bg="#0A0A0A", bd=0, highlightthickness=0)
+        self.input_frame.place(x=10, y=H-40, width=W-20, height=35)
+        
+        # Text entry with Jarvis styling
+        self.text_entry = tk.Entry(
+            self.input_frame,
+            bg="#1A1A1A",
+            fg="#00FFFF",  # Cyan text
+            insertbackground="#00FFFF",  # Cyan cursor
+            font=("Consolas", 10),
+            bd=1,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#00FFFF",
+            highlightcolor="#00FF00"
+        )
+        self.text_entry.pack(side="left", fill="both", expand=True, padx=2, pady=2)
+        self.text_entry.bind("<Return>", self._on_text_submit)
+        self.text_entry.bind("<KP_Enter>", self._on_text_submit)  # Numpad Enter
+        
+        # Send button
+        self.send_btn = tk.Button(
+            self.input_frame,
+            text="⏎",
+            bg="#1A1A1A",
+            fg="#00FFFF",
+            activebackground="#00FFFF",
+            activeforeground="#000000",
+            font=("Arial", 12, "bold"),
+            bd=0,
+            relief="flat",
+            command=self._send_text_input,
+            cursor="hand2"
+        )
+        self.send_btn.pack(side="right", padx=2, pady=2)
+
+    def _on_text_submit(self, event) -> str:
+        """Handle Enter key press"""
+        self._send_text_input()
+        return "break"  # Prevent default behavior
+
+    def _send_text_input(self) -> None:
+        """Send text input to processing queue"""
+        text = self.text_entry.get().strip()
+        if text:
+            self.text_entry.delete(0, tk.END)
+            self.text_input_queue.put(text)
+            self.heard(text)  # Show in conversation log
+            # Flash send button
+            self.send_btn.config(bg="#00FF00")
+            self.root.after(100, lambda: self.send_btn.config(bg="#1A1A1A"))
+
+    # ---- Thread-safe Interface ----------------------------
+    def set_state(self, state: str) -> None:
+        self._q.put(("state", state))
+
+    def log(self, text: str) -> None:
+        print(text)
+
+    def heard(self, text: str) -> None:
+        self._q.put(("line", ("you", text)))
+
+    def reply(self, text: str) -> None:
+        self._q.put(("line", ("jarvis", text)))
+
+    def poll_talk(self) -> bool:
+        if self.talk_event.is_set():
+            self.talk_event.clear()
+            return True
+        return False
+    
+    def poll_text_input(self) -> str | None:
+        """Check for text input from UI (non-blocking)"""
+        try:
+            return self.text_input_queue.get_nowait()
+        except queue.Empty:
+            return None
+
+    def run(self) -> None:
+        self.root.mainloop()
+
+    # ---- Mouse Interaction ----------------------------------------------------
+    def _press(self, e: tk.Event) -> None:
+        self._drag_origin = (e.x_root, e.y_root, self._x, self._y)
+        self._moved = False
+        self._press_xy = (e.x, e.y)
+
+    def _drag(self, e: tk.Event) -> None:
+        ox, oy, wx, wy = self._drag_origin
+        dx, dy = e.x_root - ox, e.y_root - oy
+        if abs(dx) > 3 or abs(dy) > 3:
+            self._moved = True
+        self._x, self._y = wx + dx, wy + dy
+        self.root.geometry(f"+{self._x}+{self._y}")
+
+    def _release(self, e: tk.Event) -> None:
+        if self._moved:
+            return
+        px, py = self._press_xy
+        if (px - CXL) ** 2 + (py - CYL) ** 2 <= (REACTOR_R * 1.4) ** 2:
+            self.talk_event.set()
+            self._state = "listening"
+            self._push_line("sys", "I'm listening, please speak...")
+
+    def _push_line(self, role: str, text: str) -> None:
+        self._lines.append((role, text))
+        self._lines = self._lines[-6:]
+
+    # ---- Drawing Primitives with Supersampling (logical coordinates -> supersampled canvas) ----------------------
+    def _ell(self, d, cx, cy, r, **kw) -> None:
+        d.ellipse([(cx - r) * S, (cy - r) * S, (cx + r) * S, (cy + r) * S], **kw)
+
+    def _arc(self, d, cx, cy, r, a0, a1, width, fill) -> None:
+        d.arc([(cx - r) * S, (cy - r) * S, (cx + r) * S, (cy + r) * S],
+              a0, a1, fill=fill, width=max(1, int(width * S)))
+
+    def _line(self, d, x0, y0, x1, y1, width, fill) -> None:
+        d.line([x0 * S, y0 * S, x1 * S, y1 * S], fill=fill,
+               width=max(1, int(width * S)))
+
+    def _txt(self, d, x, y, text, font, fill, anchor="la") -> None:
+        d.text((x * S, y * S), text, font=font, fill=fill, anchor=anchor)
+
+    def _seg_ring((self, d, cx, cy, r, width, color, segs, gap, rot) -> None:
+        step = 360 / segs
+        for k in range(segs):
+            self._arc(d, cx, cy, r, rot + k * step + gap / 2,
+                      rot + (k + 1) * step - gap / 2, width, color)
+
+    # ---- Rendering Loop ----------------------------------------------------
+    def _tick(self) -> None:
+        try:
+            while True:
+                kind, val = self._q.get_nowait()
+                if kind == "state":
+                    self._state = val
+                elif kind == "line":
+                    self._push_line(*val)
+        except queue.Empty:
+            pass
+
+        self._phase += 0.14
+        img = self._render()
+        self._photo = ImageTk.PhotoImage(img)
+        self.canvas.itemconfig(self._img_id, image=self._photo)
+        self.root.after(70, self._tick)
+
+    def _render(self) -> Image.Image:
+        if self._bg is None:
+            self._bg = self._build_bg()
+        big = self._bg.copy()
+        d = ImageDraw.Draw(big)
+        color = STATE_COLOR.get(self._state, STATE_COLOR["idle"])
+
+        self._draw_sweep(d)
+        self._draw_header(d)
+        self._draw_reactor(d, color)
+        self._draw_waveform(d, color)
+        self._draw_stats(d)
+        self._draw_notes(d)
+        self._draw_transcript(d, color)
+        return big.resize((W, H), Image.LANCZOS)
+
+    # ---- Static Background Layer (built once, copied and reused each frame) ------------------
+    def _build_bg(self) -> Image.Image:
+        big = Image.new("RGBA", (W * S, H * S), (0, 0, 0, 0))
+        d = ImageDraw.Draw(big)
+        m = 6
+        d.rounded_rectangle([m * S, m * S, (W - m) * S, (H - m) * S],
+                            radius=18 * S, fill=(3, 7, 9, 247))
+
+        ix0, iy0, ix1, iy1 = m + 4, m + 4, W - m - 4, H - m - 4
+        # Grid (very dim, texture only)
+        gx = ix0
+        while gx < ix1:
+            self._line(d, gx, iy0, gx, iy1, 1, (*GRID, 8))
+            gx += 40
+        gy = iy0
+        while gy < iy1:
+            self._line(d, ix0, gy, ix1, gy, 1, (*GRID, 8))
+            gy += 40
+        # CRT Scanlines (very dim, won't cover text)
+        sy = iy0
+        while sy < iy1:
+            self._line(d, ix0, sy, ix1, sy, 1, (0, 12, 14, 8))
+            sy += 4
+
+        # Text Area Backplate: masks texture, enhances contrast, makes text legible
+        for x0, y0, x1, y1 in (
+            (RX - 12, 112, RXE + 10, 466),     # Right column SYSTEM + NOTES
+            (24, 470, W - 24, H - 32),          # Bottom transcript ledger
+        ):
+            d.rounded_rectangle([x0 * S, y0 * S, x1 * S, y1 * S],
+                                radius=9 * S, fill=(0, 4, 6, 165))
+
+        # Panel Stroke + Corner L Decorations
+        d.rounded_rectangle([m * S, m * S, (W - m) * S, (H - m) * S],
+                            radius=18 * S, outline=(*TEAL_DIM, 210),
+                            width=max(1, int(1.5 * S)))
+        c = 24
+        for cx, cy, sx, sy2 in ((m + 14, m + 14, 1, 1), (W - m - 14, m + 14, -1, 1),
+                                (m + 14, H - m - 14, 1, -1),
+                                (W - m - 14, H - m - 14, -1, -1)):
+            self._line(d, cx, cy, cx + sx * c, cy, 2, (*TEAL, 235))
+            self._line(d, cx, cy, cx, cy + sy2 * c, 2, (*TEAL, 235))
+
+        # Separator line
+        self._line(d, 24, 104, W - 24, 104, 1, (*TEAL_DIM, 170))
+        self._line(d, DIV_X, 116, DIV_X, 470, 1, (*TEAL_DIM, 150))
+
+        # Static Block Titles + Footer
+        self._txt(d, RX, 118, "▮ SYSTEM", _mono(11), (*TEAL, 235))
+        self._txt(d, RX, 286, "▮ NOTES", _mono(11), (*TEAL, 235))
+        self._txt(d, LX + 2, 384, "▮ AUDIO", _mono(10), (*TEAL_DIM, 230))
+        self._txt(d, W // 2, H - 20,
+                  "Z E T A J A R V I S   D I S P L A Y   S Y S T E M",
+                  _mono(10), (*TEAL_DIM, 235), anchor="ma")
+        return big
+
+    def _draw_sweep(self, d) -> None:
+        """A slowly sweeping highlight line to enhance the CRT holographic feel."""
+        span = H - 24
+        y = 12 + (self._phase * 6) % span
+        for off, a in ((0, 26), (-2, 14), (2, 14)):
+            self._line(d, 12, y + off, W - 12, y + off, 1, (*TEAL, a))
+
+    # ---- Header --------------------------------------------------------
+    def _draw_header(self, d) -> None:
+        now = time.localtime()
+        clock = time.strftime("%H:%M", now)
+        months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL",
+                  "AUG", "SEP", "OCT", "NOV", "DEC"]
+        days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+        date_str = f"{months[now.tm_mon - 1]} {now.tm_mday:02d}   {days[now.tm_wday]}"
+
+        self._txt(d, 28, 24, clock, _mono(46), (*TEAL_HI, 255))
+        tw = d.textlength(clock, font=_mono(46)) / S
+        self._txt(d, 28 + tw + 8, 52, time.strftime("%S", now), _mono(16),
+                  (*TEAL, 255))
+        self._txt(d, 30, 82, date_str, _mono(13), (205, 240, 248, 255))
+
+        temp = self._weather.temp or "--°"
+        cond = self._weather.text or "SYS ONLINE"
+        self._txt(d, RXE, 26, temp, _mono(32), (*TEAL_HI, 255), anchor="ra")
+        self._txt(d, RXE, 62, cond[:18], _mono(12), (195, 232, 242, 245),
+                  anchor="ra")
+
+    # ---- Arc Reactor ----------------------------------------------------
+    def _draw_reactor(self, d, color) -> None:
+        rr, gg, bb = color
+        ph = self._phase
+        spin = ph * (60 if self._state == "thinking" else 9)
+        if self._state == "speaking":
+            pulse = 1.0 + 0.05 * math.sin(ph * 2.4)
+        elif self._state == "listening":
+            pulse = 1.0 + 0.035 * math.sin(ph * 1.7)
+        else:
+            pulse = 1.0 + 0.03 * math.sin(ph * 0.9)
+        R = REACTOR_R * pulse
+        cx, cy = CXL, CYL
+
+        for i in range(16, 0, -1):
+            frac = i / 16
+            self._ell(d, cx, cy, R * (1.0 + 0.42 * frac),
+                      fill=(rr, gg, bb, int(26 * (1 - frac) ** 2)))
+        self._seg_ring(d, cx, cy, R * 1.22, 2.5, (rr, gg, bb, 205),
+                       segs=54, gap=2.2, rot=-spin * 0.4)
+        self._seg_ring(d, cx, cy, R * 1.05, 6, (rr, gg, bb, 150),
+                       segs=12, gap=9, rot=spin)
+        self._ell(d, cx, cy, R * 0.92, outline=(rr, gg, bb, 220),
+                  width=max(1, int(1.5 * S)))
+
+        n = 10
+        r_in, r_out = R * 0.42, R * 0.82
+        for k in range(n):
+            a = math.radians(k * 360 / n - spin * 0.25)
+            aw = math.radians(360 / n * 0.36)
+            pts = []
+            for sign in (-1, 1):
+                ang = a + sign * aw
+                pts.append(((cx + math.cos(ang) * r_out) * S,
+                            (cy + math.sin(ang) * r_out) * S))
+            for sign in (1, -1):
+                ang = a + sign * aw * 0.55
+                pts.append(((cx + math.cos(ang) * r_in) * S,
+                            (cy + math.sin(ang) * r_in) * S))
+            d.polygon(pts, fill=(rr, gg, bb, 92), outline=(rr, gg, bb, 230))
+
+        self._ell(d, cx, cy, R * 0.4, outline=(rr, gg, bb, 230),
+                  width=max(1, int(1.2 * S)))
+        core = 10
+        for i in range(core, 0, -1):
+            frac = i / core
+            col = (int(rr + (255 - rr) * (1 - frac) ** 1.4),
+                   int(gg + (255 - gg) * (1 - frac) ** 1.4),
+                   int(bb + (255 - bb) * (1 - frac) ** 1.4), 255)
+            self._ell(d, cx, cy, R * 0.32 * frac, fill=col)
+
+        self._txt(d, cx, cy + R * 1.34, STATE_LABEL.get(self._state, "STANDBY"),
+                  _mono(12), (rr, gg, bb, 255), anchor="ma")
+
+    # ---- Audio Waveform ----------------------------------------------------
+    def _draw_waveform(self, d, color) -> None:
+        rr, gg, bb = color
+        x0, x1 = LX, DIV_X - 18
+        midy = 428
+        self._line(d, x0, midy, x1, midy, 1, (*TEAL_DIM, 120))
+
+        amp = {"speaking": 30, "listening": 22, "thinking": 9}.get(self._state, 6)
+        bars = 48
+        step = (x1 - x0) / bars
+        ph = self._phase
+        for i in range(bars):
+            v = (0.45 * math.sin(ph * 3.0 + i * 0.55)
+                 + 0.3 * math.sin(ph * 5.3 + i * 0.27)
+                 + 0.25 * math.sin(ph * 1.7 + i * 0.9))
+            env = 0.55 + 0.45 * math.sin(ph * 2.0 + i * 0.4)  # Voice envelope
+            h = abs(v) * amp * (env if self._state in ("speaking", "listening")
+                                else 1.0) + 1.5
+            x = x0 + i * step + step / 2
+            peak = abs(v) > 0.7
+            col = (*(TEAL_HI if peak else color), 235)
+            self._line(d, x, midy - h, x, midy + h, max(1.6, step * 0.42), col)
+
+    # ---- System Telemetry ----------------------------------------------------
+    def _draw_stats(self, d) -> None:
+        total, free = self._tele.disk()
+        used = (total - free) / total if total else 0
+        pct, charging = self._tele.battery()
+        la, cpu = self._tele.load()
+        rows = [
+            ("DISK", f"{free:.0f}G FREE / {total:.0f}G", used, False),
+            ("POWER", (f"{pct}%" + ("  CHG" if charging else ""))
+             if pct is not None else "--", (pct or 0) / 100, True),
+            ("CPU LOAD", f"{la:.2f}  {cpu * 100:.0f}%", cpu, False),
+            ("UPTIME", self._tele.uptime(), None, False),
+        ]
+        x, w, y0 = RX, RXE - RX, 146
+        for i, (label, val, frac, good_high) in enumerate(rows):
+            y = y0 + i * 30
+            self._txt(d, x, y, label, _mono(12), (120, 226, 240, 255))
+            self._txt(d, x + w, y, val, _mono(13), (218, 244, 251, 255),
+                      anchor="ra")
+            if frac is not None:
+                by = y + 17
+                self._line(d, x, by, x + w, by, 2, (*TEAL_DIM, 110))
+                fc = TEAL
+                if (good_high and frac < 0.2) or (not good_high and frac > 0.85):
+                    fc = (240, 150, 80)
+                self._line(d, x, by, x + w * max(0.02, frac), by, 2, (*fc, 255))
+
+    # ---- Notes / Todos -------------------------------------------------
+    def _draw_notes(self, d) -> None:
+        font = _han(14)
+        x, w, y = RX, RXE - RX, 312
+        for item in self._notes.items():
+            if y > 452:
+                break
+            self._txt(d, x, y + 2, "›", _mono(13), (120, 226, 240, 255))
+            for ln in self._wrap(d, item, font, w - 16)[:2]:
+                if y > 452:
+                    break
+                self._txt(d, x + 16, y, ln, font, (210, 240, 248, 255))
+                y += 22
+            y += 5
+
+    # ---- Transcript Ledger (Bottom) ----------------------------------------
+    def _draw_transcript(self, d, color) -> None:
+        bx0, by0, bx1, by1 = 24, 470, W - 24, H - 32
+        d.rounded_rectangle([bx0 * S, by0 * S, bx1 * S, by1 * S], radius=9 * S,
+                            outline=(*TEAL_DIM, 190), width=max(1, int(1 * S)))
+        self._txt(d, bx0 + 12, by0 - 9, " TRANSCRIPT ", _mono(10),
+                  (120, 226, 240, 255))
+
+        font = _han(14)
+        rendered: list[tuple[str, str]] = []
+        for role, text in self._lines:
+            prefix = {"you": "You › ", "jarvis": "Z › ", "sys": "» "}.get(role, "")
+            for ln in self._wrap(d, prefix + text, font, bx1 - bx0 - 24):
+                rendered.append((role, ln))
+        lh = 22
+        avail = int((by1 - by0 - 18) / lh)
+        jc = tuple(int(c + (255 - c) * 0.35) for c in color)   # Brighten response color
+        rolecol = {"you": (205, 238, 247, 255), "jarvis": (*jc, 255),
+                   "sys": (175, 215, 224, 240)}
+        ty = by0 + 12
+        for role, ln in rendered[-avail:]:
+            self._txt(d, bx0 + 12, ty, ln, font, rolecol.get(role, TEAL))
+            ty += lh
+
+    def _wrap(self, d, text, font, max_w) -> list[str]:
+        limit = max_w * S
+        lines, cur = [], ""
+        for ch in text:
+            if ch == "\n" or d.textlength(cur + ch, font=font) > limit:
+                if cur:
+                    lines.append(cur)
+                cur = "" if ch == "\n" else ch
+            else:
+                cur += ch
+        if cur:
+            lines.append(cur)
+        return lines or [""]

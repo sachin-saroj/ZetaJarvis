@@ -1,0 +1,3 @@
+# Copy this file as whatsapp_token.txt and paste your Meta WhatsApp Cloud API access token (single line).
+# The environment variable WHATSAPP_TOKEN has higher priority. Never commit your real token to git!
+PASTE_YOUR_WHATSAPP_TOKEN_HERE

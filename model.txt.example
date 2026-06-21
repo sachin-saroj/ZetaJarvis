@@ -1,0 +1,11 @@
+# Copy this file as model.txt to choose your LLM (lines starting with # are ignored; the first valid line is used).
+#   cp model.txt.example model.txt
+# Enter a model name supported by your API endpoint/gateway.
+# It is highly recommended to select a model that supports function calling (tools),
+# otherwise ZetaJarvis's abilities to open apps, read screens, save memory, etc., will fail. Common choices:
+#   openrouter/free
+#   deepseek-chat       (DeepSeek V3, supports tools, highly cost-effective)
+#   gpt-4o / gpt-4o-mini
+#   claude-3-5-sonnet   (If your gateway/endpoint forwards to Claude)
+# The environment variable JARVIS_MODEL has higher priority.
+openrouter/free

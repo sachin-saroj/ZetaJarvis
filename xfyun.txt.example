@@ -1,0 +1,9 @@
+# iFlytek "Speech Transcription (Streaming IAT)" Cloud ASR Credentials Template.
+# Usage: Copy this file as xfyun.txt and enter the three credentials obtained from the iFlytek Open Platform (Console -> My Applications).
+# The format must be exactly three lines in order: APPID / APIKey / APISecret (empty lines and lines starting with # will be ignored).
+# Once configured, Jarvis will use iFlytek cloud speech recognition (higher accuracy for Chinese), and fallback to local Whisper if offline/unable to connect.
+# Alternatively, you can use environment variables: JARVIS_XFYUN_APPID / JARVIS_XFYUN_APIKEY / JARVIS_XFYUN_APISECRET.
+# To force local recognition only: Set environment variable JARVIS_ASR_BACKEND=local, or delete/leave xfyun.txt empty.
+YOUR_APPID
+YOUR_API_KEY
+YOUR_API_SECRET
