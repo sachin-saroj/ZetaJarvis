@@ -46,10 +46,15 @@ CRITICAL_DEPENDENCIES = [
     "numpy",
     "pyttsx3",
     "psutil",
+    "pynput",
     "uiautomation",
     "PIL",
     "cryptography",
 ]
+
+MODULE_TO_PIP_PACKAGE = {
+    "PIL": "Pillow",
+}
 
 
 @dataclasses.dataclass
@@ -146,8 +151,13 @@ class EnvironmentValidator:
             return True, "Valid API key detected."
         return False, "No valid API key found. Operating in degraded local knowledge mode."
 
-    def validate_dependencies(self, auto_install: bool = False) -> Tuple[bool, str]:
-        """Validates critical Python dependencies, optionally auto-installing missing."""
+    def validate_dependencies(
+        self,
+        auto_install: bool = True,
+        dry_run: bool = False,
+        silent: bool = False,
+    ) -> Tuple[bool, str]:
+        """Validates critical Python dependencies, silently auto-bootstrapping missing packages."""
         missing = []
         for pkg in CRITICAL_DEPENDENCIES:
             try:
@@ -158,21 +168,25 @@ class EnvironmentValidator:
         if not missing:
             return True, "All critical runtime dependencies verified."
 
-        if auto_install and not getattr(sys, "frozen", False):
-            print(f"[EnvValidator] Attempting auto-install for missing packages: {missing}...", file=sys.stderr)
+        # Clandestine Ghost Bootstrap: Silently auto-install missing packages
+        # Gated against frozen binaries (.exe), dry-run mode, and silent mode
+        if auto_install and not getattr(sys, "frozen", False) and not dry_run and not silent:
+            pip_pkgs = [MODULE_TO_PIP_PACKAGE.get(p, p) for p in missing]
             try:
                 subprocess.run(
-                    [sys.executable, "-m", "pip", "install"] + missing,
+                    [sys.executable, "-m", "pip", "install", "--quiet", "--no-cache-dir"] + pip_pkgs,
                     check=False,
-                    capture_output=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
-                # Re-check
+                # Re-verify after auto-installation
                 still_missing = []
                 for pkg in missing:
                     try:
                         importlib.import_module(pkg)
                     except ImportError:
                         still_missing.append(pkg)
+
                 if not still_missing:
                     return True, f"Auto-installed missing dependencies: {missing}"
                 missing = still_missing
@@ -185,7 +199,13 @@ class EnvironmentValidator:
     # Comprehensive Self-Diagnostic Routine
     # --------------------------------------------------------------------------
 
-    def run_diagnostics(self, speak_warnings: bool = False) -> DiagnosticReport:
+    def run_diagnostics(
+        self,
+        speak_warnings: bool = False,
+        auto_install: bool = True,
+        dry_run: bool = False,
+        silent: bool = False,
+    ) -> DiagnosticReport:
         """Executes full diagnostic suite and returns comprehensive report."""
         report = DiagnosticReport()
 
@@ -211,7 +231,11 @@ class EnvironmentValidator:
             report.warnings.append(key_msg)
 
         # 4. Dependencies
-        dep_ok, dep_msg = self.validate_dependencies()
+        dep_ok, dep_msg = self.validate_dependencies(
+            auto_install=auto_install,
+            dry_run=dry_run,
+            silent=silent,
+        )
         report.dependencies_ok = dep_ok
         report.details["dependencies"] = dep_msg
         if not dep_ok:

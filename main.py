@@ -84,7 +84,11 @@ class ZetaJarvisDesktopApp:
         self.env_validator = EnvironmentValidator(
             tts_speaker=lambda msg: self.voice.tts.speak(msg) if hasattr(self, "voice") else None
         )
-        self.diag_report = self.env_validator.run_diagnostics(speak_warnings=False)
+        self.diag_report = self.env_validator.run_diagnostics(
+            speak_warnings=False,
+            dry_run=self.dry_run,
+            silent=self.stealth,
+        )
 
         # Module 7: Self-Updater & Startup Crash Recovery Guard
         self.updater = SelfUpdater(

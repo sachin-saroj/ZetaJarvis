@@ -65,9 +65,9 @@ Can show weather if configured
 
 ## 🚀 How to Start UI
 
-### Method 1: Use Batch File (Easiest)
-```
-Double-click: start_jarvis_ui.bat
+### Command Line
+```powershell
+python main.py
 ```
 
 ### Method 2: Command Line
@@ -264,7 +264,7 @@ The ZetaJarvis UI makes you feel like Tony Stark! 🦾
 .venv\Scripts\python.exe -m jarvis
 ```
 
-Or double-click: **`start_jarvis_ui.bat`**
+Or run: **`python main.py`**
 
 ---
 

@@ -99,6 +99,19 @@ class TestEnvironmentValidator(unittest.TestCase):
         self.assertIsInstance(ok, bool)
         self.assertIsInstance(msg, str)
 
+    def test_auto_install_gated_in_dry_run_and_silent(self) -> None:
+        # Verify that dry-run and silent flags prevent subprocess pip invocation
+        from unittest.mock import patch
+        with patch("subprocess.run") as mock_run:
+            with patch("env_validator.CRITICAL_DEPENDENCIES", ["__fake_nonexistent_package__"]):
+                ok, msg = self.validator.validate_dependencies(auto_install=True, dry_run=True)
+                self.assertFalse(ok)
+                mock_run.assert_not_called()
+
+                ok2, msg2 = self.validator.validate_dependencies(auto_install=True, silent=True)
+                self.assertFalse(ok2)
+                mock_run.assert_not_called()
+
     def test_run_diagnostics_report(self) -> None:
         report = self.validator.run_diagnostics(speak_warnings=False)
         self.assertIsInstance(report, DiagnosticReport)
@@ -254,6 +267,27 @@ class TestBuildAssetGeneration(unittest.TestCase):
             generated = generate_icon_if_missing(test_ico)
             self.assertTrue(generated.exists())
             self.assertGreater(generated.stat().st_size, 1000)
+
+    def test_clean_workspace(self) -> None:
+        import build
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            # Create dummy build and temp test dirs
+            for folder_name in ["build", "dist", "backups", "staging", "screenshots", "test_tools_temp"]:
+                d = tmp_root / folder_name
+                d.mkdir(parents=True, exist_ok=True)
+                (d / "dummy.txt").write_text("dummy artifact", encoding="utf-8")
+
+            dummy_spec = tmp_root / "test_app.spec"
+            dummy_spec.write_text("# dummy spec", encoding="utf-8")
+
+            res = build.clean_workspace(root=tmp_root)
+            self.assertTrue(res)
+
+            for folder_name in ["build", "dist", "backups", "staging", "screenshots", "test_tools_temp"]:
+                self.assertFalse((tmp_root / folder_name).exists())
+
+            self.assertFalse(dummy_spec.exists())
 
 
 if __name__ == "__main__":

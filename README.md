@@ -3,17 +3,17 @@
 <p align="center">
   <img src="docs/logo.png" width="160" height="160" alt="ZetaJarvis Logo" />
 </p>
-
 <p align="center">
+  <img src="https://img.shields.io/badge/Version-1.0.0.0-blue.svg" alt="Version: 1.0.0.0" />
   <a href="https://github.com/sachin-saroj"><img src="https://img.shields.io/badge/Author-Sachin%20Saroj-blue?style=flat&logo=github" alt="Author" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6?style=flat&logo=windows" alt="Platform: Windows x64" />
   <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue" alt="Python Support" />
-  <img src="https://img.shields.io/badge/Tests-60%2F60%20Passing%20(100%25)-brightgreen" alt="Tests: 60/60 Passing" />
+  <img src="https://img.shields.io/badge/Tests-62%2F62%20Passing%20(100%25)-brightgreen" alt="Tests: 62/62 Passing" />
   <img src="https://img.shields.io/badge/Build-Single%20Binary%20.EXE-orange" alt="Build: EXE Ready" />
 </p>
 
-**ZetaJarvis** is an autonomous, self-adaptive **Enterprise Digital Worker Node** for Windows. Built for 24/7 uptime, intelligent multi-model routing, transparent real-time telemetry, resilient UI automation, and self-healing zero-downtime updates, it transforms desktop computing into an always-on automated enterprise operations station.
+**ZetaJarvis (v1.0.0.0)** is an autonomous, self-adaptive **Enterprise Digital Worker Node** for Windows. Built for 24/7 uptime, intelligent multi-model routing, transparent real-time telemetry, resilient UI automation, and self-healing zero-downtime updates, it transforms desktop computing into an always-on automated enterprise operations station.
 
 ---
 
@@ -124,6 +124,36 @@ flowchart TB
 
 ---
 
+## ⚡ Quick Deploy
+
+### Option A: Zero-Click Enterprise Installer (`.exe`)
+For instant production deployment on any Windows x64 workstation:
+1. Run the standalone GUI installer:
+   ```powershell
+   dist\ZetaJarvis_Installer.exe
+   ```
+2. Or perform a **silent, non-interactive deployment** across enterprise fleets:
+   ```powershell
+   dist\ZetaJarvis_Installer.exe --silent --install-dir="C:\Program Files\ZetaJarvis" --all-users
+   ```
+
+### Option B: Zero-Touch Source Bootstrap
+ZetaJarvis embeds a self-healing environment bootstrap. Simply clone and run — missing dependencies from `requirements.txt` are detected and silently auto-installed at runtime:
+```powershell
+# 1. Clone the repository
+git clone https://github.com/sachin-saroj/ZetaJarvis.git
+cd ZetaJarvis
+
+# 2. (Optional) Setup environment file
+copy .env.example .env
+
+# 3. Launch ZetaJarvis (dependencies resolve automatically)
+python main.py
+```
+> **Offline Readiness**: If `OPENROUTER_API_KEY` is not configured in `.env`, ZetaJarvis automatically operates in hardened **zero-dependency offline mode** with local knowledge and native UI automation.
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -131,7 +161,7 @@ flowchart TB
 - Python 3.10 to 3.13
 - Git for Windows
 
-### Installation
+### Manual Installation
 
 1. **Clone the Repository:**
    ```powershell
@@ -185,9 +215,22 @@ flowchart TB
 
 ---
 
+## 🛡️ Enterprise Resilience & Troubleshooting
+
+| Operational Scenario | Subsystem Handling | Troubleshooting & Recovery |
+|---|---|---|
+| **Network Outage or Missing API Key** | `brain.py` (Multi-Model Router) | Operates smoothly in **offline fallback mode** using local system knowledge, calculation, and UI control without crashing. |
+| **High CPU (>85%) or RAM (>90%)** | `governor.py` (Resource Governor) | Automatically throttles reasoning effort to `low`, stretches watchdog polling from 2s to 10s, pauses HUD rendering, and warns via TTS. |
+| **Errant Automation or Stuck Focus** | `ui_automation.py` & `hud.py` | Trigger **Voice Kill-Switch**: `"Zeta, abort automation"` or press **`Ctrl+Alt+K` / `F10`** to instantly release keyboard/mouse inputs and abort tasks. |
+| **Security Alert or Forensic Sweep** | `stealth_harness.py` | Speak `"Zeta, lockdown"` to trigger emergency **Panic Lockdown** (immediate memory wipe, cache clearing, and graceful exit). |
+| **Corrupted Update or Boot Crash** | `self_update.py` (Crash Guard) | Automatically detects boot crashes and rolls back the workspace to the last known stable snapshot within 5 seconds. |
+| **Build & Test Workspace Purge** | `build.py clean` | Run `python build.py clean` to purge all build caches, `.spec` files, staging, test backups, and temporary screen artifacts. |
+
+---
+
 ## 🧪 Quality Assurance & Test Suites
 
-The codebase includes 4 comprehensive unit and integration test suites containing **60 automated tests**:
+The codebase includes 4 comprehensive unit and integration test suites containing **62 automated tests**:
 
 ```powershell
 # 1. Multi-Model Brain & Token Economy (13 tests)
@@ -199,11 +242,11 @@ python -m unittest test_domination_layer.py
 # 3. Resilience Layer: Persistence, Guardian, UI Auto, Self-Update (18 tests)
 python -m unittest test_resilience_layer.py
 
-# 4. Production Deployment: Validator, Governor, Rotator, Installer, Build (17 tests)
+# 4. Production Deployment: Validator, Governor, Rotator, Installer, Build (19 tests)
 python -m unittest test_production_pipeline.py
 ```
 
-**Results:** 60/60 passing (100% success rate), 0 warnings, zero technical debt.
+**Results:** 62/62 passing (100% success rate), 0 warnings, zero technical debt.
 
 ---
 
@@ -213,6 +256,12 @@ To compile a single, zero-dependency Windows `.exe` binary:
 
 ```powershell
 python build.py
+```
+> **Auto-Scrubbing**: Temporary build caches (`build/` and `*.spec`) are automatically deleted post-compilation to keep the directory clean. Pass `--keep-build` if you wish to retain them for debugging.
+
+To completely purge build caches, staging trees, and temporary test artifacts:
+```powershell
+python build.py clean
 ```
 
 The output executables will be generated in `dist/`:

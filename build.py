@@ -429,12 +429,53 @@ def compile_installer(python_exe: str = sys.executable) -> Optional[Path]:
 
 
 # ------------------------------------------------------------------------------
+# Workspace Cleanup
+# ------------------------------------------------------------------------------
+
+def clean_workspace(root: Optional[Path] = None) -> bool:
+    """Scrubs build/, dist/, *.spec, and temporary test folders."""
+    target_root = root or PROJECT_ROOT
+    print("=" * 70, flush=True)
+    print(f" ZetaJarvis Workspace Cleanup -- Scrubbing Artifacts ({target_root})", flush=True)
+    print("=" * 70, flush=True)
+
+    targets_dir = [
+        target_root / "build",
+        target_root / "dist",
+        target_root / "backups",
+        target_root / "staging",
+        target_root / "screenshots",
+        target_root / "test_tools_temp",
+    ]
+
+    for d in targets_dir:
+        if d.exists() and d.is_dir():
+            try:
+                shutil.rmtree(d, ignore_errors=True)
+                print(f"  [+] Removed directory: {d.name}/", flush=True)
+            except Exception as e:
+                print(f"  [-] Failed to remove directory {d.name}: {e}", flush=True)
+
+    for spec_file in target_root.glob("*.spec"):
+        try:
+            spec_file.unlink(missing_ok=True)
+            print(f"  [+] Removed spec file: {spec_file.name}", flush=True)
+        except Exception as e:
+            print(f"  [-] Failed to remove spec file {spec_file.name}: {e}", flush=True)
+
+    print("\n[+] Workspace cleanup complete.", flush=True)
+    print("=" * 70, flush=True)
+    return True
+
+
+# ------------------------------------------------------------------------------
 # Full Orchestrated Pipeline
 # ------------------------------------------------------------------------------
 
 def run_pipeline(
     skip_tests: bool = False,
     stealth: bool = False,
+    keep_build: bool = False,
     python_exe: str = sys.executable,
 ) -> bool:
     """Executes the full end-to-end production build pipeline."""
@@ -464,7 +505,15 @@ def run_pipeline(
     if installer_exe:
         sign_executable(installer_exe)
 
-    # 5. Build Summary
+    # 5. Scrub temporary build artifacts unless --keep-build
+    if not keep_build:
+        if BUILD_DIR.exists():
+            shutil.rmtree(BUILD_DIR, ignore_errors=True)
+        for spec_file in PROJECT_ROOT.glob("*.spec"):
+            spec_file.unlink(missing_ok=True)
+        print("  [+] Cleaned temporary build directory and spec files.", flush=True)
+
+    # 6. Build Summary
     duration = time.time() - start_time
     log_step("Build Pipeline Completed Successfully")
     print(f"  [+] Main Application: {app_exe}")
@@ -477,12 +526,24 @@ def run_pipeline(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ZetaJarvis Production Build Pipeline")
+    parser.add_argument("command", nargs="?", choices=["build", "clean"], default="build",
+                        help="Command to execute: 'build' (default) or 'clean'")
     parser.add_argument("--skip-tests", action="store_true", help="Skip pre-flight test gate")
     parser.add_argument("--stealth", action="store_true", help="Build executable in windowed mode (no console)")
+    parser.add_argument("--keep-build", action="store_true", help="Keep temporary build/ directory and .spec files")
+    parser.add_argument("--clean", action="store_true", help="Scrub build/, dist/, .spec, and temporary test directories")
     args = parser.parse_args()
+
+    if args.command == "clean" or args.clean:
+        clean_workspace()
+        sys.exit(0)
 
     stealth_env = os.getenv("STEALTH_MODE", "false").lower() in ("1", "true", "yes")
     stealth_active = args.stealth or stealth_env
 
-    success = run_pipeline(skip_tests=args.skip_tests, stealth=stealth_active)
+    success = run_pipeline(
+        skip_tests=args.skip_tests,
+        stealth=stealth_active,
+        keep_build=args.keep_build,
+    )
     sys.exit(0 if success else 1)
