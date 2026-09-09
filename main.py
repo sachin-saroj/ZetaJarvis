@@ -321,7 +321,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # 2. Verification Demo Mode
-    if args.demo or len(sys.argv) == 1:
+    if args.demo:
         print("=" * 70, flush=True)
         print(" ZetaJarvis Enterprise Orchestrator (main.py) -- Verification Demo", flush=True)
         print("=" * 70, flush=True)
