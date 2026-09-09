@@ -16,6 +16,14 @@ import json
 import urllib.error
 import urllib.request
 
+try:
+    import brain as core_brain
+    get_brain_response = core_brain.get_brain_response
+    reset_token_counter = core_brain.reset_token_counter
+    get_usage_stats = core_brain.get_usage_stats
+except ImportError:
+    pass
+
 from . import config, memory, tools
 
 SYSTEM_PROMPT = """You are "ZetaJarvis", a personal AI assistant running on the user's computer, created by Sachin Saroj. You maintain a sarcastic, confident, and witty persona reminiscent of Tony Stark's AI butler.

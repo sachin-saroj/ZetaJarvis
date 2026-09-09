@@ -1,0 +1,234 @@
+{
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_current_time",
+        "description": "Returns the current local date and time in ISO format.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "timezone": {
+              "type": "string",
+              "description": "Optional timezone name, default is local system time."
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Retrieves the current weather condition and temperature for a given city.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "City or city, country name, e.g. 'San Francisco' or 'London, UK'."
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "celsius",
+                "fahrenheit"
+              ],
+              "description": "Temperature unit (celsius or fahrenheit)."
+            }
+          },
+          "required": [
+            "location"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "calculate",
+        "description": "Evaluates a safe mathematical expression and returns the computed result.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "expression": {
+              "type": "string",
+              "description": "The arithmetic expression to compute, e.g. '25 * 4 + 10'."
+            }
+          },
+          "required": [
+            "expression"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "system_info",
+        "description": "Returns platform operating system, CPU architecture, and local environment details.",
+        "parameters": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "control_window",
+        "description": "Finds and controls windows: focus, minimize, maximize, close, get_rect.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "Window title substring"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "focus",
+                "minimize",
+                "maximize",
+                "close",
+                "get_rect"
+              ]
+            }
+          },
+          "required": [
+            "title",
+            "action"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "click_element",
+        "description": "Simulates mouse click at coordinates (x, y).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "integer",
+              "description": "Screen X coordinate"
+            },
+            "y": {
+              "type": "integer",
+              "description": "Screen Y coordinate"
+            },
+            "button": {
+              "type": "string",
+              "enum": [
+                "left",
+                "right"
+              ]
+            },
+            "clicks": {
+              "type": "integer",
+              "description": "Number of clicks"
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "type_text",
+        "description": "Types text into the active window control.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Text string to type"
+            },
+            "press_enter": {
+              "type": "boolean",
+              "description": "Whether to press Enter afterwards"
+            }
+          },
+          "required": [
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "capture_screen",
+        "description": "Takes a screenshot of the entire screen or a specific window.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "window_title": {
+              "type": "string",
+              "description": "Optional window title"
+            },
+            "output_path": {
+              "type": "string",
+              "description": "Optional file path to save image"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_clipboard",
+        "description": "Retrieves the current text from system clipboard.",
+        "parameters": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_clipboard",
+        "description": "Sets text to the system clipboard.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Text to copy to clipboard"
+            }
+          },
+          "required": [
+            "text"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "launch_application",
+        "description": "Launches a desktop application by name or executable, such as 'notepad' or 'calc'.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "app_name": {
+              "type": "string",
+              "description": "Application command or executable name, e.g. 'notepad'"
+            }
+          },
+          "required": [
+            "app_name"
+          ]
+        }
+      }
+    }
+  ]
+}

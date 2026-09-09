@@ -17,6 +17,7 @@ notes.txt
 # Memory file (facts Jarvis remembers about you)
 memory.json
 .jarvis_key
+diag_logs*.csv
 
 # ===== Personal Voice Clone / Large Audio Files / Promo Videos =====
 *.wav
@@ -42,5 +43,16 @@ __pycache__/
 .idea/
 .vscode/
 
-# ===== Internal Backups =====
+# ===== Internal Backups & Updates =====
 pet_orb_backup.py
+backups/
+staging/
+screenshots/
+test_tools_temp/
+.update_in_progress
+build/
+dist/
+*.spec
+*.enc
+*.tmp
+
