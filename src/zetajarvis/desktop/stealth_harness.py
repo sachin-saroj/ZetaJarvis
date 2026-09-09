@@ -42,14 +42,15 @@ except ImportError:
     Fernet = None
     FERNET_AVAILABLE = False
 
-import brain
+from zetajarvis.core import brain
+from zetajarvis.utils.helpers import get_project_root
 
 
 # ==============================================================================
 # Configuration
 # ==============================================================================
 
-DIAG_LOG_PATH = Path(os.getenv("DIAG_LOG_PATH", "diag_logs.csv"))
+DIAG_LOG_PATH = Path(os.getenv("DIAG_LOG_PATH", str(get_project_root() / "diag_logs.csv")))
 DIAG_MASTER_KEY = os.getenv("DIAG_MASTER_KEY", "ZetaJarvis-Secure-Diagnostic-Key-2026")
 MAX_LOG_SIZE_BYTES = int(os.getenv("MAX_LOG_SIZE_BYTES", "1048576"))  # 1 MB
 PANIC_KEYPHRASE = "zeta, lockdown"

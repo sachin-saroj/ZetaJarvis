@@ -36,22 +36,22 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*Setting the shape on a NumPy array.*")
 
 # Core Subsystems
-import brain
-from auto_watchdog import ToolWatchdog
-from hud import ZetaHUD
-from persistence import (
+from zetajarvis.core import brain
+from zetajarvis.automation.auto_watchdog import ToolWatchdog
+from zetajarvis.desktop.hud import ZetaHUD
+from zetajarvis.deployment.persistence import (
     AUTO_STARTUP_ENABLED,
     ProcessGuardian,
     StartupManager,
     apply_stealth_mode,
 )
-from env_validator import EnvironmentValidator
-from governor import ResourceGovernor
-from log_rotator import LogRotator
-from self_update import SelfUpdater
-from stealth_harness import StealthHarness
-import ui_automation
-from voice_pipeline import VoicePipeline
+from zetajarvis.utils.env_validator import EnvironmentValidator
+from zetajarvis.desktop.governor import ResourceGovernor
+from zetajarvis.desktop.log_rotator import LogRotator
+from zetajarvis.deployment.self_update import SelfUpdater
+from zetajarvis.desktop.stealth_harness import StealthHarness
+from zetajarvis.automation import ui_automation
+from zetajarvis.desktop.voice_pipeline import VoicePipeline
 
 
 class ZetaJarvisDesktopApp:
@@ -309,7 +309,8 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """CLI execution entrypoint."""
     args = parse_arguments()
 
     # 1. Process Guardian Mode
@@ -365,3 +366,7 @@ if __name__ == "__main__":
     )
     app.start()
     app.run_forever()
+
+
+if __name__ == "__main__":
+    main()

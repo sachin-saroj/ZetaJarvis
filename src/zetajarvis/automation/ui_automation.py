@@ -61,14 +61,15 @@ except ImportError:
     ImageGrab = None
     PIL_AVAILABLE = False
 
-import brain
+from zetajarvis.core import brain
+from zetajarvis.utils.helpers import get_project_root, get_config_path
 
 
 # ==============================================================================
 # Configuration & Safety Kill-Switch
 # ==============================================================================
 
-SCREENSHOTS_DIR = Path(os.getenv("SCREENSHOTS_DIR", "screenshots"))
+SCREENSHOTS_DIR = get_project_root() / os.getenv("SCREENSHOTS_DIR", "screenshots")
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Global Thread-Safe Abort Event
@@ -474,8 +475,9 @@ brain.register_tool_handler("set_clipboard", tool_set_clipboard)
 brain.register_tool_handler("launch_application", tool_launch_application)
 
 
-def register_ui_tools_to_config(config_path: Path = Path("tools_config.json")) -> None:
+def register_ui_tools_to_config(config_path: Optional[Path] = None) -> None:
     """Injects UI automation tools into tools_config.json."""
+    target_path = Path(config_path) if config_path else get_config_path("tools_config.json")
     ui_tool_schemas = [
         {
             "type": "function",
@@ -576,12 +578,13 @@ def register_ui_tools_to_config(config_path: Path = Path("tools_config.json")) -
         },
     ]
 
-    if not config_path.exists():
-        config_path.write_text(json.dumps({"tools": ui_tool_schemas}, indent=2), encoding="utf-8")
+    if not target_path.exists():
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(json.dumps({"tools": ui_tool_schemas}, indent=2), encoding="utf-8")
         return
 
     try:
-        data = json.loads(config_path.read_text(encoding="utf-8"))
+        data = json.loads(target_path.read_text(encoding="utf-8"))
         existing_tools = data.get("tools", [])
         existing_names = {t.get("function", {}).get("name") for t in existing_tools}
 
@@ -591,9 +594,9 @@ def register_ui_tools_to_config(config_path: Path = Path("tools_config.json")) -
                 existing_tools.append(new_tool)
 
         data["tools"] = existing_tools
-        config_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        target_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     except Exception as exc:
-        print(f"[UI Automation Warn] Failed updating tools_config.json: {exc}", file=sys.stderr)
+        print(f"[UI Automation Warn] Failed updating {target_path.name}: {exc}", file=sys.stderr)
 
 
 # Auto-inject schemas

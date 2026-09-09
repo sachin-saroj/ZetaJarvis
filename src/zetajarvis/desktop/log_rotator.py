@@ -36,11 +36,13 @@ from typing import Optional, Set
 # Configuration
 # ==============================================================================
 
+from zetajarvis.utils.helpers import get_project_root
+
 LOG_MAX_SIZE_BYTES = int(float(os.getenv("LOG_MAX_SIZE_MB", "10.0")) * 1024 * 1024)
 LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "30"))
 LOG_CHECK_INTERVAL_SEC = float(os.getenv("LOG_CHECK_INTERVAL_SEC", "300.0"))
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = get_project_root()
 LOGS_DIR = PROJECT_ROOT / "logs"
 STDOUT_LOGS_DIR = LOGS_DIR / "stdout"
 

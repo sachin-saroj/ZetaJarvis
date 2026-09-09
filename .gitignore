@@ -55,4 +55,5 @@ dist/
 *.spec
 *.enc
 *.tmp
+logs/
 

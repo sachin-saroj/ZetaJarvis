@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------------------
-# File: build.py
+# File: scripts/build.py
 # Project: ZetaJarvis - Enterprise Digital Worker Node
 # Description: Production build & packaging pipeline. Runs test gates, generates
 #              version resource & multi-resolution icon, bundles dynamic imports,
@@ -15,12 +15,12 @@ Pipeline Steps:
 1. Pre-Flight Test Gate: Executes all unit and integration test suites.
    Aborts immediately with exit code 1 if any test fails.
 2. Asset Generation:
-   - Reads version from VERSION.txt.
-   - Generates Windows PE version information structure (file_version_info.txt).
-   - Generates multi-resolution icon.ico (16px to 256px) if not present.
+   - Reads version from configs/VERSION.txt.
+   - Generates Windows PE version information structure (configs/file_version_info.txt).
+   - Generates multi-resolution icon.ico (16px to 256px) in resources/ if not present.
 3. Executable Compilation (PyInstaller):
    - Dynamic hidden import resolution (OpenAI, sounddevice, pyttsx3, PIL, win32, etc.).
-   - Asset bundling (tools_config.json, .env.example, icon.ico, VERSION.txt).
+   - Asset bundling (configs, resources, tools).
    - Console / Windowed mode selection based on STEALTH_MODE.
    - Generates standalone dist/ZetaJarvis.exe.
 4. Post-Build Code Signing:
@@ -52,21 +52,18 @@ except ImportError:
     PIL_AVAILABLE = False
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
 DIST_DIR = PROJECT_ROOT / "dist"
 BUILD_DIR = PROJECT_ROOT / "build"
 CERTS_DIR = PROJECT_ROOT / "certs"
+CONFIGS_DIR = PROJECT_ROOT / "configs"
+RESOURCES_DIR = PROJECT_ROOT / "resources"
 
-VERSION_FILE = PROJECT_ROOT / "VERSION.txt"
-ICON_FILE = PROJECT_ROOT / "icon.ico"
-VERSION_INFO_FILE = PROJECT_ROOT / "file_version_info.txt"
-
-TEST_SUITES = [
-    "test_brain.py",
-    "test_domination_layer.py",
-    "test_resilience_layer.py",
-    "test_production_pipeline.py",
-]
+# Asset paths with fallback to root if legacy
+VERSION_FILE = CONFIGS_DIR / "VERSION.txt" if (CONFIGS_DIR / "VERSION.txt").exists() else (PROJECT_ROOT / "VERSION.txt")
+ICON_FILE = RESOURCES_DIR / "icon.ico" if (RESOURCES_DIR / "icon.ico").exists() else (PROJECT_ROOT / "icon.ico")
+VERSION_INFO_FILE = CONFIGS_DIR / "file_version_info.txt" if (CONFIGS_DIR / "file_version_info.txt").exists() else (PROJECT_ROOT / "file_version_info.txt")
 
 HIDDEN_IMPORTS = [
     # Core AI & Runtime
@@ -110,19 +107,27 @@ HIDDEN_IMPORTS = [
     "py_compile",
     "importlib",
     "inspect",
-    # Internal modules
-    "brain",
-    "hud",
-    "voice_pipeline",
-    "auto_watchdog",
-    "stealth_harness",
-    "persistence",
-    "ui_automation",
-    "self_update",
-    "env_validator",
-    "governor",
-    "log_rotator",
-    "installer",
+    # Modular ZetaJarvis packages
+    "zetajarvis",
+    "zetajarvis.core",
+    "zetajarvis.core.brain",
+    "zetajarvis.core.dispatcher",
+    "zetajarvis.desktop",
+    "zetajarvis.desktop.hud",
+    "zetajarvis.desktop.voice_pipeline",
+    "zetajarvis.desktop.governor",
+    "zetajarvis.desktop.log_rotator",
+    "zetajarvis.desktop.stealth_harness",
+    "zetajarvis.automation",
+    "zetajarvis.automation.ui_automation",
+    "zetajarvis.automation.auto_watchdog",
+    "zetajarvis.deployment",
+    "zetajarvis.deployment.persistence",
+    "zetajarvis.deployment.self_update",
+    "zetajarvis.deployment.installer",
+    "zetajarvis.utils",
+    "zetajarvis.utils.helpers",
+    "zetajarvis.utils.env_validator",
 ]
 
 
@@ -137,31 +142,30 @@ def log_step(step_name: str) -> None:
 # ------------------------------------------------------------------------------
 
 def run_test_gate(python_exe: str = sys.executable) -> bool:
-    """Executes all test suites. Returns True only if every test suite passes."""
+    """Executes the test suite discovery. Returns True only if all tests pass."""
     log_step("Step 1: Running Pre-Flight Test Gate")
 
-    for test_file in TEST_SUITES:
-        test_path = PROJECT_ROOT / test_file
-        if not test_path.exists():
-            print(f"  [-] Skipping {test_file} (file not yet created).", flush=True)
-            continue
+    print(f"  [*] Executing test discovery across tests/ ...", flush=True)
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{SRC_DIR};{PROJECT_ROOT}" if not existing_pythonpath else f"{SRC_DIR};{PROJECT_ROOT};{existing_pythonpath}"
 
-        print(f"  [*] Executing {test_file}...", flush=True)
-        res = subprocess.run(
-            [python_exe, str(test_path)],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if res.returncode != 0:
-            print(f"  [!] Test suite failed: {test_file}", file=sys.stderr, flush=True)
-            print(res.stdout, file=sys.stderr, flush=True)
-            print(res.stderr, file=sys.stderr, flush=True)
-            return False
-        else:
-            print(f"  [+] Passed: {test_file}", flush=True)
+    cmd = [python_exe, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"]
+    res = subprocess.run(
+        cmd,
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    if res.returncode != 0:
+        print(f"  [!] Pre-flight test suite failed!", file=sys.stderr, flush=True)
+        print(res.stdout, file=sys.stderr, flush=True)
+        print(res.stderr, file=sys.stderr, flush=True)
+        return False
 
+    print(res.stderr or res.stdout, flush=True)
     print("\n[+] Pre-flight test gate PASSED. All test suites verified successfully.", flush=True)
     return True
 
@@ -172,10 +176,13 @@ def run_test_gate(python_exe: str = sys.executable) -> bool:
 
 def read_version() -> Tuple[str, Tuple[int, int, int, int]]:
     """Reads VERSION.txt and returns (version_str, (major, minor, patch, build))."""
-    if not VERSION_FILE.exists():
-        VERSION_FILE.write_text("1.0.0.0", encoding="utf-8")
+    v_file = VERSION_FILE
+    if not v_file.exists():
+        CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
+        v_file = CONFIGS_DIR / "VERSION.txt"
+        v_file.write_text("1.0.0.0", encoding="utf-8")
 
-    ver_str = VERSION_FILE.read_text(encoding="utf-8").strip() or "1.0.0.0"
+    ver_str = v_file.read_text(encoding="utf-8").strip() or "1.0.0.0"
     parts = [int(p) for p in ver_str.replace("-", ".").split(".") if p.isdigit()]
     while len(parts) < 4:
         parts.append(0)
@@ -185,6 +192,8 @@ def read_version() -> Tuple[str, Tuple[int, int, int, int]]:
 
 def generate_version_info_file(version_str: str, quad: Tuple[int, int, int, int]) -> Path:
     """Generates a Windows PE file version information resource for PyInstaller."""
+    v_info = VERSION_INFO_FILE
+    v_info.parent.mkdir(parents=True, exist_ok=True)
     content = f"""# UTF-8
 VSVersionInfo(
   ffi=FixedFileInfo(
@@ -214,17 +223,19 @@ VSVersionInfo(
   ]
 )
 """
-    VERSION_INFO_FILE.write_text(content, encoding="utf-8")
-    return VERSION_INFO_FILE
+    v_info.write_text(content, encoding="utf-8")
+    return v_info
 
 
-def generate_icon_if_missing(icon_path: Path = ICON_FILE) -> Path:
+def generate_icon_if_missing(icon_path: Optional[Path] = None) -> Path:
     """Generates a multi-resolution geometric ZetaJarvis icon if missing."""
-    if icon_path.exists():
-        return icon_path
+    target_path = icon_path or ICON_FILE
+    if target_path.exists():
+        return target_path
 
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     if not PIL_AVAILABLE or Image is None or ImageDraw is None:
-        return icon_path
+        return target_path
 
     img = Image.new("RGBA", (256, 256), color=(0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -244,9 +255,9 @@ def generate_icon_if_missing(icon_path: Path = ICON_FILE) -> Path:
     draw.polygon(z_points, fill=(0, 212, 255, 255))
 
     sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
-    img.save(str(icon_path), format="ICO", sizes=sizes)
-    print(f"  [+] Generated multi-resolution icon: {icon_path.name}", flush=True)
-    return icon_path
+    img.save(str(target_path), format="ICO", sizes=sizes)
+    print(f"  [+] Generated multi-resolution icon: {target_path.name}", flush=True)
+    return target_path
 
 
 # ------------------------------------------------------------------------------
@@ -254,7 +265,7 @@ def generate_icon_if_missing(icon_path: Path = ICON_FILE) -> Path:
 # ------------------------------------------------------------------------------
 
 def compile_executable(
-    main_script: str = "main.py",
+    main_script: Optional[str] = None,
     exe_name: str = "ZetaJarvis",
     stealth_mode: bool = False,
     python_exe: str = sys.executable,
@@ -266,6 +277,10 @@ def compile_executable(
     ver_info_path = generate_version_info_file(version_str, quad)
     icon_path = generate_icon_if_missing()
 
+    entry_script = Path(main_script) if main_script else (SRC_DIR / "zetajarvis" / "main.py")
+    if not entry_script.is_absolute():
+        entry_script = PROJECT_ROOT / entry_script
+
     cmd = [
         python_exe,
         "-m", "PyInstaller",
@@ -275,6 +290,7 @@ def compile_executable(
         "--name", exe_name,
         "--distpath", str(DIST_DIR),
         "--workpath", str(BUILD_DIR),
+        "--paths", str(SRC_DIR),
     ]
 
     # Console vs Windowed
@@ -291,26 +307,24 @@ def compile_executable(
     if icon_path.exists():
         cmd.extend(["--icon", str(icon_path)])
 
-    # Added Data files (Windows separator is ;)
-    data_files = [
-        ("tools_config.json", "."),
-        (".env.example", "."),
-        ("VERSION.txt", "."),
-    ]
-    if icon_path.exists():
-        data_files.append((icon_path.name, "."))
+    # Added Data bundles
+    if CONFIGS_DIR.exists():
+        cmd.extend(["--add-data", f"{CONFIGS_DIR};configs"])
+    if RESOURCES_DIR.exists():
+        cmd.extend(["--add-data", f"{RESOURCES_DIR};resources"])
 
-    for src, dst in data_files:
-        src_p = PROJECT_ROOT / src
-        if src_p.exists():
-            cmd.extend(["--add-data", f"{src_p};{dst}"])
+    # Fallbacks for root assets
+    for root_asset in ["tools_config.json", ".env.example", "VERSION.txt"]:
+        ap = PROJECT_ROOT / root_asset
+        if ap.exists():
+            cmd.extend(["--add-data", f"{ap};."])
 
     # Hidden imports
     for imp in HIDDEN_IMPORTS:
         cmd.extend(["--hidden-import", imp])
 
     # Target entry script
-    cmd.append(str(PROJECT_ROOT / main_script))
+    cmd.append(str(entry_script))
 
     print(f"  [*] Executing PyInstaller command...", flush=True)
     res = subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=False)
@@ -376,7 +390,9 @@ def compile_installer(python_exe: str = sys.executable) -> Optional[Path]:
     """Compiles installer.py into a standalone dist/ZetaJarvis_Installer.exe."""
     log_step("Step 5: Compiling Self-Contained Installer (ZetaJarvis_Installer.exe)")
 
-    installer_script = PROJECT_ROOT / "installer.py"
+    installer_script = SRC_DIR / "zetajarvis" / "deployment" / "installer.py"
+    if not installer_script.exists():
+        installer_script = PROJECT_ROOT / "installer.py"
     if not installer_script.exists():
         print("  [-] installer.py missing. Skipping installer packaging.", flush=True)
         return None
@@ -392,24 +408,26 @@ def compile_installer(python_exe: str = sys.executable) -> Optional[Path]:
         "--name", "ZetaJarvis_Installer",
         "--distpath", str(DIST_DIR),
         "--workpath", str(BUILD_DIR),
+        "--paths", str(SRC_DIR),
         "--console",
     ]
 
     if icon_path.exists():
         cmd.extend(["--icon", str(icon_path)])
 
-    # Bundle the main executable and assets inside the installer
     dist_exe = DIST_DIR / "ZetaJarvis.exe"
     if dist_exe.exists():
         cmd.extend(["--add-data", f"{dist_exe};dist"])
+
+    if CONFIGS_DIR.exists():
+        cmd.extend(["--add-data", f"{CONFIGS_DIR};configs"])
+    if RESOURCES_DIR.exists():
+        cmd.extend(["--add-data", f"{RESOURCES_DIR};resources"])
 
     for asset in ["tools_config.json", ".env.example", "VERSION.txt"]:
         ap = PROJECT_ROOT / asset
         if ap.exists():
             cmd.extend(["--add-data", f"{ap};."])
-
-    if icon_path.exists():
-        cmd.extend(["--add-data", f"{icon_path};."])
 
     cmd.append(str(installer_script))
 

@@ -31,17 +31,18 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-import brain
+from zetajarvis.core import brain
+from zetajarvis.utils.helpers import get_project_root, get_config_path, get_tools_dir
 
 
 # ==============================================================================
 # Configuration
 # ==============================================================================
 
-TOOLS_DIR = Path(os.getenv("TOOLS_DIR", "tools"))
+TOOLS_DIR = get_tools_dir()
 DISABLED_DIR = TOOLS_DIR / "disabled"
 POLL_INTERVAL_SEC = float(os.getenv("WATCHDOG_POLL_SEC", "1.0"))
-TOOLS_CONFIG_PATH = Path(os.getenv("TOOLS_CONFIG_PATH", "tools_config.json"))
+TOOLS_CONFIG_PATH = Path(os.getenv("TOOLS_CONFIG_PATH", str(get_config_path("tools_config.json"))))
 
 
 # ==============================================================================

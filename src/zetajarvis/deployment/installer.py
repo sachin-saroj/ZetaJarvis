@@ -39,9 +39,10 @@ import subprocess
 import sys
 from typing import Optional, Tuple
 
-from persistence import StartupManager
+from zetajarvis.deployment.persistence import StartupManager
+from zetajarvis.utils.helpers import get_project_root, get_config_path, get_resource_path
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = get_project_root()
 
 
 def is_admin() -> bool:
@@ -188,12 +189,18 @@ class ZetaInstaller:
         else:
             self.log("Compiled ZetaJarvis.exe not in dist/. Deploying main script entry...")
             if not self.dry_run:
-                shutil.copy2(self.source_dir / "main.py", self.install_dir / "main.py")
+                entry_src = self.source_dir / "run.py"
+                if not entry_src.exists():
+                    entry_src = self.source_dir / "src" / "zetajarvis" / "main.py"
+                shutil.copy2(entry_src, self.install_dir / "main.py")
                 installed_exe = self.install_dir / "main.py"
 
         # Copy data and config files
         for fname in files_to_deploy:
-            src_file = self.source_dir / fname
+            if fname.endswith(".ico"):
+                src_file = get_resource_path(fname)
+            else:
+                src_file = get_config_path(fname)
             if src_file.exists() and not self.dry_run:
                 shutil.copy2(src_file, self.install_dir / fname)
 

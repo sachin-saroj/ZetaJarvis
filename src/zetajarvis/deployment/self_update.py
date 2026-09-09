@@ -43,10 +43,9 @@ import time
 from typing import Callable, List, Optional, Set, Tuple
 
 # ==============================================================================
-# Configuration
-# ==============================================================================
+from zetajarvis.utils.helpers import get_project_root
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = get_project_root()
 DEFAULT_BACKUP_DIR = PROJECT_ROOT / "backups"
 DEFAULT_STAGING_DIR = PROJECT_ROOT / "staging"
 UPDATE_FLAG_FILE = PROJECT_ROOT / ".update_in_progress"

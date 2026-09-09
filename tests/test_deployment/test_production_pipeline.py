@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------------------
-# File: test_production_pipeline.py
+# File: tests/test_deployment/test_production_pipeline.py
 # Project: ZetaJarvis - Enterprise Digital Worker Node
 # Description: Comprehensive unit and integration test suite for production
 #              deployment sub-systems: env_validator, governor, log_rotator,
@@ -19,22 +19,28 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*Setting the shape on a NumPy array.*")
 
-WORKSPACE_ROOT = Path(__file__).resolve().parent
-if str(WORKSPACE_ROOT) not in sys.path:
-    sys.path.insert(0, str(WORKSPACE_ROOT))
+# Ensure src/ and root are on sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-import brain
-from build import (
+from zetajarvis.core import brain
+import scripts.build as build
+from scripts.build import (
     generate_icon_if_missing,
     generate_version_info_file,
     read_version,
 )
-from env_validator import DiagnosticReport, EnvironmentValidator
-from governor import (
+from zetajarvis.utils.env_validator import DiagnosticReport, EnvironmentValidator
+from zetajarvis.desktop.governor import (
     CPU_HIGH_THRESHOLD,
     CPU_LOW_THRESHOLD,
     EMERGENCY_CPU_THRESHOLD,
@@ -43,13 +49,13 @@ from governor import (
     RAM_LOW_THRESHOLD,
     ResourceGovernor,
 )
-from installer import (
+from zetajarvis.deployment.installer import (
     ZetaInstaller,
     get_default_install_dir,
     is_admin,
     parse_args,
 )
-from log_rotator import LogRotator
+from zetajarvis.desktop.log_rotator import LogRotator
 
 
 class TestEnvironmentValidator(unittest.TestCase):
@@ -101,9 +107,8 @@ class TestEnvironmentValidator(unittest.TestCase):
 
     def test_auto_install_gated_in_dry_run_and_silent(self) -> None:
         # Verify that dry-run and silent flags prevent subprocess pip invocation
-        from unittest.mock import patch
         with patch("subprocess.run") as mock_run:
-            with patch("env_validator.CRITICAL_DEPENDENCIES", ["__fake_nonexistent_package__"]):
+            with patch("zetajarvis.utils.env_validator.CRITICAL_DEPENDENCIES", ["__fake_nonexistent_package__"]):
                 ok, msg = self.validator.validate_dependencies(auto_install=True, dry_run=True)
                 self.assertFalse(ok)
                 mock_run.assert_not_called()
@@ -248,9 +253,8 @@ class TestBuildAssetGeneration(unittest.TestCase):
     def test_version_info_generation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_info = Path(tmp) / "file_version_info.txt"
-            old_info = globals().get("VERSION_INFO_FILE")
+            old_info = getattr(build, "VERSION_INFO_FILE", None)
             try:
-                import build
                 build.VERSION_INFO_FILE = tmp_info
                 info_p = generate_version_info_file("1.0.0.0", (1, 0, 0, 0))
                 self.assertTrue(info_p.exists())
@@ -258,7 +262,7 @@ class TestBuildAssetGeneration(unittest.TestCase):
                 self.assertIn("VSVersionInfo", content)
                 self.assertIn("ZetaJarvis Enterprise Digital Worker Node", content)
             finally:
-                if old_info:
+                if old_info is not None:
                     build.VERSION_INFO_FILE = old_info
 
     def test_icon_generation(self) -> None:
@@ -269,7 +273,6 @@ class TestBuildAssetGeneration(unittest.TestCase):
             self.assertGreater(generated.stat().st_size, 1000)
 
     def test_clean_workspace(self) -> None:
-        import build
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             # Create dummy build and temp test dirs

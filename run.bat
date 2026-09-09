@@ -11,7 +11,7 @@ if not exist "%PYTHON_EXE%" (
     set PYTHON_EXE=python
 )
 
-"%PYTHON_EXE%" main.py %*
+"%PYTHON_EXE%" run.py %*
 
 echo.
 echo ======================================================================

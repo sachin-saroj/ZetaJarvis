@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------------------
-# File: test_resilience_layer.py
+# File: tests/test_automation/test_resilience_layer.py
 # Project: ZetaJarvis - Enterprise Digital Worker Node
 # Description: Comprehensive test suite for Modules 5, 6, and 7:
 #              Startup persistence, Process Guardian, UI automation,
@@ -24,22 +24,22 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*Setting the shape on a NumPy array.*")
 
-# Ensure workspace root is in sys.path
-WORKSPACE_ROOT = Path(__file__).resolve().parent
-if str(WORKSPACE_ROOT) not in sys.path:
-    sys.path.insert(0, str(WORKSPACE_ROOT))
+# Ensure src/ is on sys.path
+SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
-import brain
-from main import ZetaJarvisDesktopApp
-from persistence import (
+from zetajarvis.core import brain
+from zetajarvis.main import ZetaJarvisDesktopApp
+from zetajarvis.deployment.persistence import (
     AUTO_STARTUP_ENABLED,
     ProcessGuardian,
     StartupManager,
     apply_stealth_mode,
 )
-from self_update import SelfUpdater
-import ui_automation
-from ui_automation import (
+from zetajarvis.deployment.self_update import SelfUpdater
+import zetajarvis.automation.ui_automation as ui_automation
+from zetajarvis.automation.ui_automation import (
     ClipboardController,
     InputController,
     WindowController,
@@ -48,6 +48,7 @@ from ui_automation import (
     reset_abort,
     trigger_abort,
 )
+from zetajarvis.utils.helpers import get_config_path
 
 
 class TestStartupPersistence(unittest.TestCase):
@@ -58,7 +59,7 @@ class TestStartupPersistence(unittest.TestCase):
 
     def test_launch_command_generation(self) -> None:
         cmd = self.manager.get_launch_command()
-        self.assertIn("main.py", cmd)
+        self.assertTrue("main.py" in cmd or "run.py" in cmd)
         self.assertTrue(cmd.startswith('"') or cmd.startswith("'"))
 
     def test_registry_registration_dry_run(self) -> None:
@@ -175,7 +176,7 @@ class TestUIAutomation(unittest.TestCase):
             )
 
         # Check tools_config.json contains their definitions
-        config_path = WORKSPACE_ROOT / "tools_config.json"
+        config_path = get_config_path("tools_config.json")
         if config_path.exists():
             data = json.loads(config_path.read_text(encoding="utf-8"))
             names = {t["function"]["name"] for t in data.get("tools", [])}

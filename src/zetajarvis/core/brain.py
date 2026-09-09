@@ -41,6 +41,15 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from zetajarvis.utils.helpers import get_project_root, get_config_path
+from zetajarvis.core.dispatcher import (
+    DynamicToolDispatcher,
+    TOOL_REGISTRY,
+    register_tool_handler,
+    load_tools_config,
+    calculate_jitter_backoff,
+)
+
 # Third-party zero-dependency requirements: openai and optional tiktoken
 try:
     import openai
@@ -123,7 +132,7 @@ SOFT_TOKEN_LIMIT: int = int(os.getenv("SOFT_TOKEN_LIMIT", "4096"))
 MAX_HISTORY: int = int(os.getenv("MAX_HISTORY", "20"))
 TOKEN_TRUNCATION_THRESHOLD: int = int(os.getenv("TOKEN_TRUNCATION_THRESHOLD", "3000"))
 DAILY_TOKEN_QUOTA: int = int(os.getenv("DAILY_TOKEN_QUOTA", "100000"))
-TOOLS_CONFIG_PATH: str = os.getenv("TOOLS_CONFIG_PATH", "tools_config.json")
+TOOLS_CONFIG_PATH: str = os.getenv("TOOLS_CONFIG_PATH", str(get_config_path("tools_config.json")))
 MAX_PARALLEL_TOOLS: int = int(os.getenv("MAX_PARALLEL_TOOLS", "3"))
 MAX_TOOL_RETRIES: int = int(os.getenv("MAX_TOOL_RETRIES", "2"))
 MAX_MODEL_RETRIES: int = int(os.getenv("MAX_MODEL_RETRIES", "3"))

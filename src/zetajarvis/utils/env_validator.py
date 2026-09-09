@@ -31,6 +31,8 @@ import time
 from typing import Callable, Dict, List, Optional
 import urllib.request
 
+from zetajarvis.utils.helpers import get_project_root, get_config_path
+
 # ==============================================================================
 # Configuration
 # ==============================================================================
@@ -141,9 +143,9 @@ class EnvironmentValidator:
             or os.getenv("OPENAI_API_KEY", "")
         ).strip()
 
-        # Check api_key.txt file fallback
+        # Check .env or api_key.txt file fallback
         if not key:
-            key_file = Path("api_key.txt")
+            key_file = get_config_path("api_key.txt")
             if key_file.exists():
                 key = key_file.read_text(encoding="utf-8").strip()
 

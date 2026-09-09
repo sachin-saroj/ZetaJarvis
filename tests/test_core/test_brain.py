@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------------------
-# File: test_brain.py
+# File: tests/test_core/test_brain.py
 # Project: ZetaJarvis - Brain Engine Test Suite
 # Description: Rigorous unit and integration test suite validating all core
 #              capabilities of the self-adaptive multi-model routing engine.
 # ------------------------------------------------------------------------------
 
-"""Comprehensive Test Suite for ZetaJarvis brain.py."""
+"""Comprehensive Test Suite for ZetaJarvis core/brain.py."""
+
+from __future__ import annotations
 
 import json
+from pathlib import Path
+import sys
 import time
 import unittest
 from unittest.mock import MagicMock, patch
 
-import brain
-from brain import (
+# Ensure src/ is on sys.path
+SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from zetajarvis.core import brain
+from zetajarvis.core.brain import (
     FALLBACK_CHAIN,
     MODEL_PRIMARY,
     MODEL_SECONDARY,

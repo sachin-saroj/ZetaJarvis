@@ -11,7 +11,7 @@ if not exist "%PYTHON_EXE%" (
     set PYTHON_EXE=python
 )
 
-"%PYTHON_EXE%" build.py %*
+"%PYTHON_EXE%" scripts\build.py %*
 if errorlevel 1 (
     echo [ERROR] Build pipeline failed!
     exit /b 1

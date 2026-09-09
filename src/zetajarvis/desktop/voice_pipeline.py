@@ -64,7 +64,7 @@ except ImportError:
     PYTTSX3_AVAILABLE = False
 
 # Import Core Brain
-import brain
+from zetajarvis.core import brain
 
 
 # ==============================================================================

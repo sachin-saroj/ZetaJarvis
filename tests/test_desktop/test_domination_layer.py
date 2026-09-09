@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------------------
-# File: test_domination_layer.py
+# File: tests/test_desktop/test_domination_layer.py
 # Project: ZetaJarvis - Desktop Domination Layer Test Suite
 # Description: Unit and integration tests for HUD, Voice Pipeline,
 #              Auto-Watchdog, Stealth Harness, and Central Orchestrator.
@@ -9,9 +9,12 @@
 
 """Comprehensive Test Suite for Desktop Domination Layer."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 import shutil
+import sys
 import time
 import unittest
 from unittest.mock import MagicMock, patch
@@ -19,12 +22,17 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*Setting the shape on a NumPy array.*")
 
-import auto_watchdog
-import brain
-import hud
-import main
-import stealth_harness
-import voice_pipeline
+# Ensure src/ is on sys.path
+SRC_DIR = Path(__file__).resolve().parent.parent.parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from zetajarvis.automation import auto_watchdog
+from zetajarvis.core import brain
+from zetajarvis.desktop import hud
+from zetajarvis import main
+from zetajarvis.desktop import stealth_harness
+from zetajarvis.desktop import voice_pipeline
 
 
 class TestModule1HUD(unittest.TestCase):
@@ -179,7 +187,6 @@ class TestModule4StealthHarness(unittest.TestCase):
             self.assertTrue(stealth_harness.is_cloud_or_shared_environment())
 
         with patch.dict("os.environ", {"GOOGLE_COLAB": "", "CI": "", "AGENT_MODE": ""}, clear=True):
-            # Should be false when clear
             self.assertFalse(stealth_harness.is_cloud_or_shared_environment())
 
     def test_panic_lockdown_trigger(self):

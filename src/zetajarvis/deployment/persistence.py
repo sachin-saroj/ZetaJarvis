@@ -54,6 +54,8 @@ STEALTH_MODE = os.getenv("STEALTH_MODE", "false").lower() in ("1", "true", "yes"
 # Startup Persistence (Windows Registry + Task Scheduler)
 # ==============================================================================
 
+from zetajarvis.utils.helpers import get_project_root
+
 class StartupManager:
     """Manages system startup registration via Windows Registry and Task Scheduler."""
 
@@ -65,11 +67,17 @@ class StartupManager:
     ) -> None:
         self.app_name = app_name
         self.task_name = task_name
-        self.target_script = target_script or str(Path(__file__).resolve().parent / "main.py")
+        root = get_project_root()
+        default_script = root / "run.py"
+        if not default_script.exists():
+            default_script = root / "src" / "zetajarvis" / "main.py"
+        self.target_script = target_script or str(default_script)
         self.python_exe = sys.executable
 
     def get_launch_command(self) -> str:
         """Returns the complete execution command string for launching ZetaJarvis."""
+        if getattr(sys, "frozen", False):
+            return f'"{self.python_exe}"'
         return f'"{self.python_exe}" "{self.target_script}"'
 
     def register_registry(self, dry_run: bool = False) -> bool:
